@@ -579,13 +579,11 @@ class Extractor(object):
             out.write(out_str)
             out.write('\n')
         else:
-            if options.print_revision:
-                header = '<doc id="%s" revid="%s" url="%s" title="%s">\n' % (self.id, self.revid, url, self.title)
-            else:
-                header = '<doc id="%s" url="%s" title="%s">\n' % (self.id, url, self.title)
-            footer = "\n</doc>\n"
-            if out == sys.stdout:   # option -a or -o -
-                header = header.encode('utf-8')
+            header = post_process_section(self.title)
+            if text:
+                text[0] = "\n"
+            footer = ""
+
             out.write(header)
             for line in text:
                 if out == sys.stdout:   # option -a or -o -
@@ -2524,6 +2522,31 @@ listClose = {'*': '</ul>', '#': '</ol>', ';': '</dl>', ':': '</dl>'}
 listItem = {'*': '<li>%s</li>', '#': '<li>%s</<li>', ';': '<dt>%s</dt>',
             ':': '<dd>%s</dd>'}
 
+from typing import Text, Dict, Optional
+
+def post_process_paragraph(text: Text) -> Text:
+    return text
+
+def post_process_section(title: Text, level: int = 1) -> Text:
+    assert level > 0
+    marker = "=" * level
+    return f"{marker} {title.strip(' .')} {marker}"
+
+def post_process_bullet(text: Text) -> Text:
+    return "* " + text
+
+# def get_current_section_title(headers: Dict[int, Text]) -> Optional[Text]:
+#     if not headers:
+#         return None
+#     depth = max(headers.keys()) 
+#     return headers[depth].strip()
+
+# IGNORED_SECTIONS = [
+#     "References",
+#     "Other websites",
+#     "Notes",
+# ]
+
 
 def compact(text):
     """Deal with headers, lists, empty sections, residuals of tables.
@@ -2573,7 +2596,7 @@ def compact(text):
             if title:
                 if title[-1] not in '!?':
                     title += '.'
-                page.append(title)
+                page.append(post_process_section(title))
         # handle indents
         elif line[0] == ':':
             # page.append(line.lstrip(':*#;'))
@@ -2613,13 +2636,14 @@ def compact(text):
                     if options.keepSections:
                         # emit open sections
                         items = sorted(headers.items())
-                        for _, v in items:
-                            page.append("Section::::" + v)
+                        for __level, v in items:
+                            page.append(post_process_section(v, __level))
                     headers.clear()
                     # use item count for #-lines
                     listCount[i - 1] += 1
-                    bullet = 'BULLET::::%d. ' % listCount[i - 1] if n == '#' else 'BULLET::::- '
-                    page.append('{0:{1}s}'.format(bullet, len(listLevel)) + line)
+                    if page and page[-1] == "":  # avoid gap before list
+                        page.pop()
+                    page.append(post_process_bullet(line))
                 elif options.toHTML:
                     if n not in listItem: 
                         n = '*'
@@ -2642,7 +2666,7 @@ def compact(text):
             if options.keepSections:
                 items = sorted(headers.items())
                 for i, v in items:
-                    page.append("Section::::" + v)
+                    page.append(post_process_section(v, i))
             headers.clear()
             page.append(line)  # first line
             emptySection = False
